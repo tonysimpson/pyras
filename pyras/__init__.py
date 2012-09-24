@@ -10,24 +10,9 @@ import subprocess
 import threading
 import itertools
 import uuid
-import signal
 from collections import defaultdict, namedtuple
 from docopt import docopt
-
-if sys.platform.startswith('linux'):
-    def list_procs_with_command_and_env():
-        for proc in os.listdir('/proc/'):
-            if proc.isdigit():
-                try:
-                    cmd = open('/proc/%s/cmdline' % (proc,)).read()
-                    env = dict(line.split('=',1) for line in open('/proc/%s/environ' % (proc,)).read().split('\0') if '=' in line)
-                    yield int(proc), cmd, env
-                except:
-                    pass
-
-    def kill(pid):
-        os.kill(int(pid), signal.SIGTERM)
-
+from ptools.current import *
 
 UUID_NAME='PYRAS_UUID'
 RUNNING, STARTING, STOPPING, STOPPED, BAD = 'RUNNING STARTING STOPPING STOPPED BAD'.split()
@@ -88,7 +73,7 @@ class Controller(object):
     def stop(self, command):
         while len(command.pids) > 0:
             for pid in command.pids:
-               kill(pid)
+               kill_pid(pid)
             command = self.get_updated(command)
 
     def stop_cid(self, cid):
@@ -122,11 +107,19 @@ class Controller(object):
     def get_actual(self):
         actual_commands = [Command(i.uuid, i.command, i.group, []) for i in self.commands]
         uuid_map = dict((i.uuid, i) for i in actual_commands)
-        for pid, cmd, env in list_procs_with_command_and_env():
+        for pid in list_pids():
+            try:
+                cmd, env = get_pid_info(pid)
+            except OperationException:
+                continue
             if UUID_NAME in env:
                 uuid = env[UUID_NAME]
                 if uuid in uuid_map:
                     uuid_map[uuid].pids.append(pid)
+                else:
+                    c = Command(uuid, cmd, 'UNKNOWN', [pid])
+                    uuid_map[uuid] = c
+                    actual_commands.append(c)
         return actual_commands
 
     def get_info(self):
