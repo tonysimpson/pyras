@@ -110,7 +110,7 @@ class Controller(object):
         for pid in list_pids():
             try:
                 cmd, env = get_pid_info(pid)
-            except OperationException:
+            except Exception:
                 continue
             if UUID_NAME in env:
                 uuid = env[UUID_NAME]
