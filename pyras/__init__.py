@@ -247,8 +247,9 @@ class RemoteCommandServer(paramiko.ServerInterface):
                 transport = paramiko.Transport(client)
                 try:
                     transport.add_server_key(self.host_key)
+                    print "Starting Server"
                     transport.start_server(server=self)
-                    channel = transport.accept()
+                    print "Started Server"
                 except KeyboardInterrupt:
                     transport.close()
                     break
