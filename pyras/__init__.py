@@ -40,6 +40,14 @@ class Controller(object):
         self.lock = threading.Lock()
         self.commands = []
 
+    def __enter__(self):
+        self.acquire_lock()
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.lock.release()
+        return False
+
     def acquire_lock(self):
         self.lock.acquire()
 
@@ -50,6 +58,11 @@ class Controller(object):
         c = Command(str(uuid.uuid4()), command, group, tuple())
         self.commands.append(c)
         return self.store.to_cid(c.uuid), c
+
+    def unregister_all(self):
+        for command in self.get_actual():
+            self.stop(command)
+        self.commands = []
 
     def unregister(self, cid):
         command = self.get_by_cid(cid)
@@ -191,12 +204,9 @@ class RemoteCommandServer(paramiko.ServerInterface):
                 f.close()
             else:
                 # Handle using handle_command methods
-                self.ctrl.acquire_lock()
-                try:
+                with self.ctrl:
                     resp = getattr(self, 'handle_' + command)(*args[1:])
-                finally:
-                    self.ctrl.release_lock()
-                channel.sendall(json.dumps(resp))
+                    channel.sendall(json.dumps(resp))
             channel.send_exit_status(0)
         except:
             channel.sendall_stderr(traceback.format_exc())
@@ -210,6 +220,9 @@ class RemoteCommandServer(paramiko.ServerInterface):
 
     def handle_unregister(self, cid):
         return self.ctrl.unregister(cid)
+
+    def handle_unregister_all(self):
+        return self.ctrl.unregister_all()
 
     def handle_start_group(self, group):
         self.ctrl.start_group(group)
