@@ -312,6 +312,12 @@ class RemoteCommandClient(object):
         """
         return self._command('unregister', cid)
 
+    def unregister_all(self):
+        """Unregister all commands
+
+        """
+        return self._command('unregister_all')
+
     def run(self, command):
         """Immediatly run a command.
 
