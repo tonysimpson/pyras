@@ -42,19 +42,19 @@ class Controller(object):
 
     def acquire_lock(self):
         self.lock.acquire()
-    
+
     def release_lock(self):
         self.lock.release()
-    
+
     def register(self, command, group):
         c = Command(str(uuid.uuid4()), command, group, tuple())
         self.commands.append(c)
-        return self.store.to_cid(c.uuid), c 
+        return self.store.to_cid(c.uuid), c
 
     def unregister(self, cid):
         command = self.get_by_cid(cid)
         self.stop(command)
-        self.commands = [i for i in self.commands if i.uuid != command.uuid] 
+        self.commands = [i for i in self.commands if i.uuid != command.uuid]
 
     def run(self, command):
         cid, c = self.register(command, 'run')
@@ -225,7 +225,7 @@ class RemoteCommandServer(paramiko.ServerInterface):
 
     def handle_stop(self, cid):
         self.ctrl.stop_cid(cid)
-        
+
     def check_auth_publickey(self, username, key):
         if key in self.authorized_keys:
             return paramiko.AUTH_SUCCESSFUL
@@ -264,59 +264,76 @@ class RemoteCommandClient(object):
     _DEFAULT_BUFSIZE = 8192
 
     def __init__(self, hostname, key_filename=('private_rc.key',), look_for_keys=False):
-        self.__client = paramiko.SSHClient()
-        self.__client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.__client.connect(hostname=hostname, port=NODE_SERVER_PORT, key_filename=list(key_filename), look_for_keys=look_for_keys)
+        self._client = paramiko.SSHClient()
+        self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        self._client.connect(hostname=hostname, port=NODE_SERVER_PORT, key_filename=list(key_filename), look_for_keys=look_for_keys)
 
     def register(self, command, group='default'):
         """Register a new process in a group
-        
+
         """
-        return self.__command('register', command, group)
+        return self._command('register', command, group)
 
     def start_group(self, group='default'):
         """Bring everyone in the group to a running state
-        
+
         """
-        return self.__command('start_group', group)
+        return self._command('start_group', group)
 
     def stop_group(self, group='default'):
         """Stop the group
 
         """
-        return self.__command('stop_group', group)
+        return self._command('stop_group', group)
 
     def stop(self, cid):
         """Stop the cid
 
         """
-        return self.__command('stop', cid)
-        
+        return self._command('stop', cid)
+
     def unregister(self, cid):
         """For cids not in the 'default' group stop and move to 'default'
         for any other stop and remove registration.
 
         """
-        return self.__command('unregister', cid)
+        return self._command('unregister', cid)
 
     def run(self, command):
         """Immediatly run a command.
 
         The command will be created in the 'run' group and immediatly started.
         """
-        return self.__command('run', command)
+        return self._command('run', command)
+
+    def close(self):
+        """Close the connection, after calling this the client is unusable.
+
+        """
+        self._client.close()
+
+    def is_active(self):
+        """Is the client still connected.
+
+        """
+        return (self._client.get_transport() is not None
+        and self._client.get_transport().is_active()) == True)
 
     def start(self, cid):
         """Bring the cid to running.
 
         """
-        return self.__command('start', cid)
+        return self._command('start', cid)
 
     def info(self):
-        return self.__command('info')
+        return self._command('info')
 
     def read_gen(self, filename, offset, numbytes):
-        for data in self.__exec_command_yielding_stdout_raw_bytes('read', filename, offset, numbytes):
+        for data in self._exec_command_yielding_stdout_raw_bytes(
+            'read',
+            filename,
+            offset,
+            numbytes):
             yield data
 
     def read(self, filename, offset, numbytes):
@@ -325,12 +342,27 @@ class RemoteCommandClient(object):
     def read_end(self, filename, numbytes):
         return self.read(filename, -numbytes, numbytes)
 
-    def __command(self, *args):
-        reply = ''.join(self.__exec_command_yielding_stdout_raw_bytes(*args))
+    def get_remote_file_to_disk(self, filename, out, offset=0):
+        """Reads the remote file on a pyras client and dumps it to disk
+
+        out should be an open filelike object.
+        Returns: bytes read
+        """
+        chunk_size = 8192
+        while True:
+            data = self.read(filename, offset, chunk_size)
+            if data == '':
+                return offset
+            else:
+                out.write(data)
+                offset += len(data)
+
+    def _command(self, *args):
+        reply = ''.join(self._exec_command_yielding_stdout_raw_bytes(*args))
         return json.loads(reply)
 
-    def __exec_command_yielding_stdout_raw_bytes(self, *args):
-        channel = self.__client.get_transport().open_channel('exec')
+    def _exec_command_yielding_stdout_raw_bytes(self, *args):
+        channel = self._client.get_transport().open_channel('exec')
         channel.exec_command(json.dumps(args))
         stderr_buffer = []
         bufsize = RemoteCommandClient._DEFAULT_BUFSIZE
