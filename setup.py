@@ -5,7 +5,7 @@ from setuptools import setup
 
 setup (
     name='pyras',
-    version='1.0b1',
+    version='1.0b2',
     description='Python Remote Access Server',
     author='The Test People',
     author_email='tony.simpson@thetestpeople.com',
