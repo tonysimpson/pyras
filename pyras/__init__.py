@@ -336,7 +336,7 @@ class RemoteCommandClient(object):
 
         """
         return (self._client.get_transport() is not None
-        and self._client.get_transport().is_active()) == True)
+                and self._client.get_transport().is_active() == True)
 
     def start(self, cid):
         """Bring the cid to running.
