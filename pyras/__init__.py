@@ -361,12 +361,14 @@ class RemoteCommandClient(object):
     def read_end(self, filename, numbytes):
         return self.read(filename, -numbytes, numbytes)
 
-    def get_remote_file_to_disk(self, filename, out, offset=0):
+    def get_remote_file_to_disk(self, filename, out=None, offset=0):
         """Reads the remote file on a pyras client and dumps it to disk
 
         out should be an open filelike object.
         Returns: bytes read
         """
+        if out is None:
+            out = open(filename,'wb')
         chunk_size = 8192
         while True:
             data = self.read(filename, offset, chunk_size)
