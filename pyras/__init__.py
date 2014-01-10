@@ -18,6 +18,7 @@ UUID_NAME='PYRAS_UUID'
 RUNNING, STARTING, STOPPING, STOPPED, BAD = 'RUNNING STARTING STOPPING STOPPED BAD'.split()
 
 Command = namedtuple('Command', 'uuid command group pids'.split())
+CommandDetails = namedtuple("CommandDetails", "cmd group pids".split())
 
 
 class CidUuidStore(object):
@@ -345,7 +346,9 @@ class RemoteCommandClient(object):
         return self._command('start', cid)
 
     def info(self):
-        return self._command('info')
+        info = self._command('info')
+        return {cid: CommandDetails(cmd, group, pids)
+                for cid, cmd, group, pids in info}
 
     def read_gen(self, filename, offset, numbytes):
         for data in self._exec_command_yielding_stdout_raw_bytes(
@@ -377,6 +380,17 @@ class RemoteCommandClient(object):
             else:
                 out.write(data)
                 offset += len(data)
+
+    def wait_for(self, cid):
+        """ Wait for the command with the given cid to terminate. """
+        while self.info()[cid].pids:
+            time.sleep(0.1)
+
+    def wait_for_group(self, group):
+        """ Wait for the commands in the given group to terminate. """
+        while any([command_details.pids for command_details
+                   in self.info().values() if command_details.group == group]):
+            time.sleep(0.1)
 
     def _command(self, *args):
         reply = ''.join(self._exec_command_yielding_stdout_raw_bytes(*args))
