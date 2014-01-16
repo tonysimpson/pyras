@@ -194,14 +194,17 @@ class RemoteCommandServer(paramiko.ServerInterface):
             command = args[0]
             if command == 'read':
                 # Special path for 'read' as it just returns raw bytes not json
-                filename, offset, numbytes = args[1:]
-                f = open(filename, 'rb')
-                if offset < 0:
-                    f.seek(offset, 2)
-                elif offset > 0:
-                    f.seek(offset)
-                channel.sendall(f.read(numbytes))
-                f.close()
+                filename, offset = args[1:3]
+                numbytes = args[3] if len(args) == 4 else -1
+                with open(filename, 'rb') as f:
+                    if offset < 0:
+                        f.seek(offset, os.SEEK_END)
+                    elif offset > 0:
+                        f.seek(offset)
+                    if numbytes > -1:
+                        channel.sendall(f.read(numbytes))
+                    else:
+                        channel.sendall(f.read())
             else:
                 # Handle using handle_command methods
                 with self.ctrl:
@@ -270,8 +273,10 @@ class RemoteCommandServer(paramiko.ServerInterface):
                 break
         print "Closed"
 
+
 class RemoteCommandError(Exception):
     pass
+
 
 class RemoteCommandClient(object):
     _DEFAULT_BUFSIZE = 8192
@@ -279,7 +284,7 @@ class RemoteCommandClient(object):
     def __init__(self, hostname, key_filename=('private_rc.key',), look_for_keys=False):
         self._client = paramiko.SSHClient()
         self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self._client.connect(hostname=hostname, port=NODE_SERVER_PORT, key_filename=list(key_filename), look_for_keys=look_for_keys)
+        self._client.connect(hostname=hostname, port=NODE_SERVER_PORT, key_filename=key_filename, look_for_keys=look_for_keys)
 
     def register(self, command, group='default'):
         """Register a new process in a group
@@ -361,41 +366,66 @@ class RemoteCommandClient(object):
     def read_end(self, filename, numbytes):
         return self.read(filename, -numbytes, numbytes)
 
-    def get_remote_file_to_disk(self, filename, out=None, offset=0):
-        """Reads the remote file on a pyras client and dumps it to disk
+    def get_remote_file_to_disk(self, filename,
+                                out=None, offset=0, chunk_size=16384):
+        """ Read the remote file on the client and dumps it to disk.  """
+        close = False
+        try:
+            if out is None:
+                out = open(filename, 'wb')
+                close = True
+            if isinstance(out, (str, unicode)):
+                out = open(out, 'wb')
+                close = True
+            while True:
+                data = self.read(filename, offset, chunk_size)
+                if data == '':
+                    return offset
+                else:
+                    out.write(data)
+                    offset += len(data)
+        finally:
+            if close:
+                out.close()
 
-        out should be an open filelike object.
-        Returns: bytes read
+    def get_file(self, filename, out=None, **kwargs):
+        """
+        Get a file from the server, dumping it to `out`.
+
+        pass bufsize to change the network buffering size.
         """
         if out is None:
-            out = open(filename,'wb')
-        chunk_size = 8192
-        while True:
-            data = self.read(filename, offset, chunk_size)
-            if data == '':
-                return offset
-            else:
-                out.write(data)
-                offset += len(data)
+            out = filename
+        with open(out, 'wb') as f:
+            data = self._exec_command_yielding_stdout_raw_bytes(
+                'read', filename, 0, -1, **kwargs)
+            f.writelines(data)
 
     def _command(self, *args):
         reply = ''.join(self._exec_command_yielding_stdout_raw_bytes(*args))
         return json.loads(reply)
 
-    def _exec_command_yielding_stdout_raw_bytes(self, *args):
+    def _exec_command_yielding_stdout_raw_bytes(self, *args, **kwargs):
         channel = self._client.get_transport().open_channel('exec')
         channel.exec_command(json.dumps(args))
+
         stderr_buffer = []
-        bufsize = RemoteCommandClient._DEFAULT_BUFSIZE
-        while not channel.exit_status_ready() or channel.recv_stderr_ready() or channel.recv_ready():
+        bufsize = kwargs.get('bufsize', RemoteCommandClient._DEFAULT_BUFSIZE)
+        while not channel.exit_status_ready():
+            # The remote process hasn't exited
+            if channel.recv_ready():
+                # We have stdout data to receive
+                data = channel.recv(bufsize)
+                yield data
+
             if channel.recv_stderr_ready():
+                # We have stderr data to receive
                 data = channel.recv_stderr(bufsize)
                 stderr_buffer.append(data)
-            if channel.recv_ready():
-                yield channel.recv(bufsize)
         exit_status = channel.recv_exit_status()
         if exit_status != 0 or len(stderr_buffer) > 0:
-            raise RemoteCommandError('Exit Status ' + str(exit_status) + '\n' + ''.join(stderr_buffer))
+            raise RemoteCommandError('Exit Status %s\n%s' %
+                                     (exit_status, join(stderr_buffer)))
         channel.close()
 
 def genauth_main():
