@@ -282,10 +282,10 @@ class RemoteCommandError(Exception):
 class RemoteCommandClient(object):
     _DEFAULT_BUFSIZE = 8192
 
-    def __init__(self, hostname, key_filename=('private_rc.key',), look_for_keys=False):
+    def __init__(self, hostname, key_filename=('private_rc.key',), look_for_keys=False, timeout=None):
         self._client = paramiko.SSHClient()
         self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self._client.connect(hostname=hostname, port=NODE_SERVER_PORT, key_filename=key_filename, look_for_keys=look_for_keys)
+        self._client.connect(hostname=hostname, port=NODE_SERVER_PORT, key_filename=key_filename, look_for_keys=look_for_keys, timeout=timeout)
 
     def register(self, command, group='default'):
         """Register a new process in a group
