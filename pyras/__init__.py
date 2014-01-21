@@ -419,13 +419,19 @@ class RemoteCommandClient(object):
         reply = ''.join(self._exec_command_yielding_stdout_raw_bytes(*args))
         return json.loads(reply)
 
+    def _channel_sending(self, channel):
+        # sometimes exit_status_ready is True when we still have stdout
+        if not channel.exit_status_ready():
+            return True
+        return channel.recv_ready() or channel.recv_stderr_ready()
+
     def _exec_command_yielding_stdout_raw_bytes(self, *args, **kwargs):
         channel = self._client.get_transport().open_channel('exec')
         channel.exec_command(json.dumps(args))
 
         stderr_buffer = []
         bufsize = kwargs.get('bufsize', RemoteCommandClient._DEFAULT_BUFSIZE)
-        while not channel.exit_status_ready():
+        while self._channel_sending(channel):
             # The remote process hasn't exited
             if channel.recv_ready():
                 # We have stdout data to receive
