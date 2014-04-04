@@ -35,6 +35,7 @@ class CidUuidStore(object):
     def to_uuid(self, cid):
         return self.cid_to_uuid[cid]
 
+
 class Controller(object):
     def __init__(self):
         self.store = CidUuidStore()
@@ -445,7 +446,7 @@ class RemoteCommandClient(object):
         exit_status = channel.recv_exit_status()
         if exit_status != 0 or len(stderr_buffer) > 0:
             raise RemoteCommandError('Exit Status %s\n%s' %
-                                     (exit_status, join(stderr_buffer)))
+                                     (exit_status,''. join(stderr_buffer)))
         channel.close()
 
 def genauth_main():
