@@ -370,28 +370,6 @@ class RemoteCommandClient(object):
     def read_end(self, filename, numbytes):
         return self.read(filename, -numbytes, numbytes)
 
-    def get_remote_file_to_disk(self, filename,
-                                out=None, offset=0, chunk_size=16384):
-        """ Read the remote file on the client and dumps it to disk.  """
-        close = False
-        try:
-            if out is None:
-                out = open(filename, 'wb')
-                close = True
-            if isinstance(out, (str, unicode)):
-                out = open(out, 'wb')
-                close = True
-            while True:
-                data = self.read(filename, offset, chunk_size)
-                if data == '':
-                    return offset
-                else:
-                    out.write(data)
-                    offset += len(data)
-        finally:
-            if close:
-                out.close()
-
     def get_file(self, filename, out=None, **kwargs):
         """
         Get a file from the server, dumping it to `out`.
