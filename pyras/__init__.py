@@ -88,7 +88,10 @@ class Controller(object):
     def stop(self, command):
         while len(command.pids) > 0:
             for pid in command.pids:
-               kill_pid(pid)
+                try:
+                    kill_pid(pid)
+                except OSError:
+                    pass
             command = self.get_updated(command)
 
     def stop_cid(self, cid):
